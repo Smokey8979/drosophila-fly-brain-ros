@@ -1,0 +1,35 @@
+fly_brain_node:
+  ros__parameters:
+    # Model configuration
+    # Paths can be left empty to automatically resolve from workspace/package-share data directory
+    connectome_comp_path: ""
+    connectome_conn_path: ""
+    cache_dir: ""
+    checkpoint_file: "/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json"
+    dt_ms: 0.1
+    steps_per_cycle: 10          # 10 steps x 0.1ms = 1.0ms simulated brain time per control cycle
+    device: "cpu"
+
+    # Sensory encoding parameters
+    safe_distance: 1.2           # meters (distance at which looming aversion initiates)
+    critical_distance: 0.35      # meters (distance triggering maximum evasion rate)
+    max_loom_rate: 200.0         # Hz (maximum Poisson rate injected into LC4 visual threat neurons)
+    nominal_forward_rate: 500.0  # Hz (nominal baseline drive to P9 forward walking neurons)
+
+    # Motor decoding parameters
+    linear_gain_kv: 0.02         # m/s per Hz of P9 descending activity
+    angular_gain_kw: 0.03        # rad/s per Hz of DNa left/right asymmetry
+    reverse_gain_krev: 0.02      # m/s per Hz of MDN activity
+    max_linear_speed: 0.4        # m/s (maximum chassis linear speed)
+    max_angular_speed: 1.0       # rad/s (maximum chassis turning yaw rate)
+    wheel_separation: 0.36       # meters (4-wheel chassis track width b)
+    wheel_radius: 0.085          # meters (wheel radius r)
+
+    # Safety supervisor parameters
+    cmd_timeout_sec: 0.5         # Emergency halt if no sensor or brain update within 500ms
+    obstacle_hard_stop_dist: 0.25 # Immediate hardware override if obstacle < 25cm
+
+    # ROS Communication & Scheduling
+    scan_topic: "/scan"
+    cmd_vel_topic: "/cmd_vel"
+    controller_rate_hz: 10.0     # Hz (controller execution and cmd_vel publication frequency)

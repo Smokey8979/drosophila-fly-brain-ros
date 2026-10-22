@@ -1,0 +1,221 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <world name="learning_lab_arena">
+    <!-- Modern Gazebo Fortress Systems -->
+    <plugin
+      filename="ignition-gazebo-physics-system"
+      name="ignition::gazebo::systems::Physics">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-user-commands-system"
+      name="ignition::gazebo::systems::UserCommands">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-scene-broadcaster-system"
+      name="ignition::gazebo::systems::SceneBroadcaster">
+    </plugin>
+    <plugin
+      filename="ignition-gazebo-sensors-system"
+      name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <!-- Scene & Lighting -->
+    <scene>
+      <ambient>0.4 0.4 0.4 1.0</ambient>
+      <background>0.7 0.8 0.9 1.0</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Ground Plane -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.8 0.8 0.8 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Arena Boundary Walls (20m x 20m) -->
+    <!-- North Wall -->
+    <model name="wall_north">
+      <static>true</static>
+      <pose>0 10.0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><box><size>20.0 0.2 2.0</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>20.0 0.2 2.0</size></box></geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1.0</ambient>
+            <diffuse>0.6 0.6 0.6 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- South Wall -->
+    <model name="wall_south">
+      <static>true</static>
+      <pose>0 -10.0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><box><size>20.0 0.2 2.0</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>20.0 0.2 2.0</size></box></geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1.0</ambient>
+            <diffuse>0.6 0.6 0.6 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- East Wall -->
+    <model name="wall_east">
+      <static>true</static>
+      <pose>10.0 0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><box><size>0.2 20.0 2.0</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>0.2 20.0 2.0</size></box></geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1.0</ambient>
+            <diffuse>0.6 0.6 0.6 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- West Wall -->
+    <model name="wall_west">
+      <static>true</static>
+      <pose>-10.0 0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><box><size>0.2 20.0 2.0</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>0.2 20.0 2.0</size></box></geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1.0</ambient>
+            <diffuse>0.6 0.6 0.6 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Central Obstacles Creating Navigable Corridors -->
+    <model name="obstacle_center">
+      <static>true</static>
+      <pose>0 0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><cylinder><radius>1.2</radius><length>2.0</length></cylinder></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><cylinder><radius>1.2</radius><length>2.0</length></cylinder></geometry>
+          <material>
+            <ambient>0.8 0.4 0.1 1.0</ambient>
+            <diffuse>0.8 0.4 0.1 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="obstacle_left">
+      <static>true</static>
+      <pose>-3.5 -2.0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><cylinder><radius>0.8</radius><length>2.0</length></cylinder></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><cylinder><radius>0.8</radius><length>2.0</length></cylinder></geometry>
+          <material>
+            <ambient>0.8 0.4 0.1 1.0</ambient>
+            <diffuse>0.8 0.4 0.1 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="obstacle_right">
+      <static>true</static>
+      <pose>3.5 -2.0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><cylinder><radius>0.8</radius><length>2.0</length></cylinder></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><cylinder><radius>0.8</radius><length>2.0</length></cylinder></geometry>
+          <material>
+            <ambient>0.8 0.4 0.1 1.0</ambient>
+            <diffuse>0.8 0.4 0.1 1.0</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Target Reward Zone (Green Sucrose Region) -->
+    <model name="reward_zone_sugar">
+      <static>true</static>
+      <pose>5.5 5.5 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="vis">
+          <geometry><cylinder><radius>1.8</radius><length>0.02</length></cylinder></geometry>
+          <material>
+            <ambient>0.1 0.9 0.2 0.8</ambient>
+            <diffuse>0.1 0.9 0.2 0.8</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Hazard Shock Zone (Red Bitter Quinine Region) -->
+    <model name="hazard_zone_shock">
+      <static>true</static>
+      <pose>-5.5 5.5 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="vis">
+          <geometry><cylinder><radius>1.8</radius><length>0.02</length></cylinder></geometry>
+          <material>
+            <ambient>0.9 0.1 0.1 0.8</ambient>
+            <diffuse>0.9 0.1 0.1 0.8</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>

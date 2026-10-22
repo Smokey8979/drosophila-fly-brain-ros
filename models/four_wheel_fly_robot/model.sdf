@@ -1,0 +1,307 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <model name="four_wheel_fly_robot">
+    <static>false</static>
+    
+    <!-- Base Chassis Link -->
+    <link name="base_link">
+      <pose>0 0 0.1 0 0 0</pose>
+      <inertial>
+        <mass>5.0</mass>
+        <inertia>
+          <ixx>0.05</ixx>
+          <iyy>0.08</iyy>
+          <izz>0.10</izz>
+        </inertia>
+      </inertial>
+      <collision name="chassis_collision">
+        <geometry>
+          <box>
+            <size>0.4 0.3 0.12</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="chassis_visual">
+        <geometry>
+          <box>
+            <size>0.4 0.3 0.12</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.2 0.8 1.0</ambient>
+          <diffuse>0.2 0.4 0.9 1.0</diffuse>
+          <specular>0.3 0.3 0.3 1.0</specular>
+        </material>
+      </visual>
+
+      <!-- LiDAR Sensor (Modern Fortress GPU/CPU LiDAR) -->
+      <sensor name="lidar" type="gpu_lidar">
+        <pose relative_to="base_link">0.1 0 0.1 0 0 0</pose>
+        <topic>scan</topic>
+        <update_rate>20.0</update_rate>
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>180</samples>
+              <resolution>1</resolution>
+              <min_angle>-2.35619</min_angle> <!-- -135 deg -->
+              <max_angle>2.35619</max_angle>  <!-- +135 deg (270 deg FOV matching Drosophila compound eye) -->
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.10</min>
+            <max>15.0</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+      </sensor>
+    </link>
+
+    <!-- Front Left Wheel -->
+    <link name="front_left_wheel">
+      <pose>0.12 0.18 0.085 -1.570796 0 0</pose>
+      <inertial>
+        <mass>0.8</mass>
+        <inertia>
+          <ixx>0.001</ixx>
+          <iyy>0.001</iyy>
+          <izz>0.002</izz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry>
+          <cylinder>
+            <radius>0.085</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>0.8</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.085</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1.0</ambient>
+          <diffuse>0.2 0.2 0.2 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- Front Right Wheel -->
+    <link name="front_right_wheel">
+      <pose>0.12 -0.18 0.085 -1.570796 0 0</pose>
+      <inertial>
+        <mass>0.8</mass>
+        <inertia>
+          <ixx>0.001</ixx>
+          <iyy>0.001</iyy>
+          <izz>0.002</izz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry>
+          <cylinder>
+            <radius>0.085</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>0.8</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.085</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1.0</ambient>
+          <diffuse>0.2 0.2 0.2 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- Rear Left Wheel -->
+    <link name="rear_left_wheel">
+      <pose>-0.12 0.18 0.085 -1.570796 0 0</pose>
+      <inertial>
+        <mass>0.8</mass>
+        <inertia>
+          <ixx>0.001</ixx>
+          <iyy>0.001</iyy>
+          <izz>0.002</izz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry>
+          <cylinder>
+            <radius>0.085</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>0.8</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.085</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1.0</ambient>
+          <diffuse>0.2 0.2 0.2 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- Rear Right Wheel -->
+    <link name="rear_right_wheel">
+      <pose>-0.12 -0.18 0.085 -1.570796 0 0</pose>
+      <inertial>
+        <mass>0.8</mass>
+        <inertia>
+          <ixx>0.001</ixx>
+          <iyy>0.001</iyy>
+          <izz>0.002</izz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry>
+          <cylinder>
+            <radius>0.085</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>0.8</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.085</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1.0</ambient>
+          <diffuse>0.2 0.2 0.2 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- Wheel Revolute Joints -->
+    <joint name="front_left_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>front_left_wheel</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+      </axis>
+    </joint>
+
+    <joint name="front_right_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>front_right_wheel</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+      </axis>
+    </joint>
+
+    <joint name="rear_left_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>rear_left_wheel</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+      </axis>
+    </joint>
+
+    <joint name="rear_right_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>rear_right_wheel</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+      </axis>
+    </joint>
+
+    <!-- Modern Gazebo Fortress Differential/Skid-Steer Plugin -->
+    <plugin
+      filename="ignition-gazebo-diff-drive-system"
+      name="ignition::gazebo::systems::DiffDrive">
+      <left_joint>front_left_joint</left_joint>
+      <left_joint>rear_left_joint</left_joint>
+      <right_joint>front_right_joint</right_joint>
+      <right_joint>rear_right_joint</right_joint>
+      <wheel_separation>0.36</wheel_separation>
+      <wheel_radius>0.085</wheel_radius>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <topic>cmd_vel</topic>
+      <odom_topic>odom</odom_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_link</child_frame_id>
+      <max_linear_acceleration>5.0</max_linear_acceleration>
+      <min_linear_acceleration>-5.0</min_linear_acceleration>
+      <max_angular_acceleration>10.0</max_angular_acceleration>
+      <min_angular_acceleration>-10.0</min_angular_acceleration>
+    </plugin>
+
+    <!-- Joint State Publisher Plugin -->
+    <plugin
+      filename="ignition-gazebo-joint-state-publisher-system"
+      name="ignition::gazebo::systems::JointStatePublisher">
+      <topic>joint_states</topic>
+      <joint_name>front_left_joint</joint_name>
+      <joint_name>front_right_joint</joint_name>
+      <joint_name>rear_left_joint</joint_name>
+      <joint_name>rear_right_joint</joint_name>
+    </plugin>
+  </model>
+</sdf>

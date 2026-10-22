@@ -1,0 +1,33 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+*.bak*
+*.bak
+
+# Testing, Cache & Logs
+.pytest_cache/
+test_logs/
+*.log
+
+# Checkpoints, PyTorch weights & Large biological datasets
+checkpoints/
+*.pth
+*.pt
+*.parquet
+*.csv
+*.pickle
+
+# Build & Installation artifacts
+build/
+install/
+log/
+*.egg-info/
+*.egg-link
+
+# System & Editor files
+.DS_Store
+*.swp
+*~
+.vscode/
+.idea/
