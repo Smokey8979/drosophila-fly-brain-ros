@@ -385,6 +385,81 @@ class ConnectomeLearner:
             "in_encounter": self.in_encounter,
         }
 
+    def apply_feedback(self, reward: float, note: str = "") -> Dict[str, Any]:
+        """Applies explicit reinforcement feedback to the adaptive navigation policy.
+
+        Args:
+            reward: Signed reinforcement scalar in range [-2.0, +2.0].
+                    Positive values (> 0) reinforce efficient traversal and boost clutter velocity.
+                    Negative values (< 0) penalize risky navigation, expand the proactive
+                    steering margin (delta_steer_dist), and reduce clutter speed factor.
+            note: Optional human or automated annotation describing the feedback event.
+
+        Returns:
+            Structured dictionary of updated policy parameters and episode outcomes.
+        """
+        if not isinstance(reward, (int, float)) or math.isnan(reward) or math.isinf(reward):
+            raise ValueError(f"Invalid reward value: {reward}. Must be a finite number.")
+
+        clipped_reward = float(np.clip(reward, -2.0, 2.0))
+        self.cumulative_reward += clipped_reward
+        updates: Dict[str, float] = {}
+
+        if clipped_reward > 0:
+            old_sp = self.speed_factor
+            self.speed_factor = min(1.0, round(self.speed_factor + 0.03 * clipped_reward, 4))
+            if abs(self.speed_factor - old_sp) > 1e-4:
+                updates["speed_factor"] = round(self.speed_factor - old_sp, 4)
+            outcome = "MANUAL_REWARD"
+            lesson = note or f"Manual reward ({clipped_reward:+.2f}). Reinforcing efficient traversal."
+        elif clipped_reward < 0:
+            old_steer = self.delta_steer_dist
+            steer_inc = round(self.eta_steer * abs(clipped_reward), 4)
+            self.delta_steer_dist = min(self.max_delta_steer, round(self.delta_steer_dist + steer_inc, 4))
+            if abs(self.delta_steer_dist - old_steer) > 1e-4:
+                updates["delta_steer_dist"] = round(self.delta_steer_dist - old_steer, 4)
+
+            old_sp = self.speed_factor
+            self.speed_factor = max(0.60, round(self.speed_factor - 0.04 * abs(clipped_reward), 4))
+            if abs(self.speed_factor - old_sp) > 1e-4:
+                updates["speed_factor"] = round(self.speed_factor - old_sp, 4)
+            outcome = "MANUAL_PUNISH"
+            lesson = note or f"Manual punishment ({clipped_reward:+.2f}). Proactively expanded steering margin."
+        else:
+            outcome = "NEUTRAL_FEEDBACK"
+            lesson = note or "Neutral feedback (0.00). No parameter adjustments."
+
+        self.total_learning_steps += 1
+        self.last_update_delta = updates
+
+        # Store in episodic memory
+        ep_id = self.episodic_memory.start_episode(
+            trigger="MANUAL_FEEDBACK",
+            d_front=2.0,
+            d_left=2.0,
+            d_right=2.0,
+        )
+        self.episodic_memory.end_episode(
+            outcome=outcome,
+            reward=clipped_reward,
+            parameter_updates=updates,
+            lesson=lesson,
+        )
+
+        return {
+            "status": "APPLIED",
+            "reward": round(clipped_reward, 3),
+            "cumulative_reward": round(self.cumulative_reward, 3),
+            "delta_steer_dist": round(self.delta_steer_dist, 4),
+            "effective_steer_threshold": round(self.get_effective_steer_threshold(), 4),
+            "speed_factor": round(self.speed_factor, 4),
+            "w_dir_bias": round(self.w_dir_bias, 4),
+            "total_learning_steps": self.total_learning_steps,
+            "updates": updates,
+            "lesson": lesson,
+            "episode_id": ep_id,
+        }
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize complete learning state and episodic memory."""
         return {

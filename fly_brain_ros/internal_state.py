@@ -160,10 +160,27 @@ class InternalStateManager:
             "uncertainty": round(self.uncertainty, 3),
             "computational_fatigue": round(self.computational_fatigue, 3),
             "valence_affect": round(self.valence_affect, 3),
+            "valence": round(self.valence_affect, 3),
+            "vigilance": round(self.environmental_vigilance, 3),
+            "energy": round(max(0.0, 1.0 - self.computational_fatigue), 3),
+            "arousal": round(self.environmental_vigilance, 3),
             "matched_episode_id": self.matched_episode_id,
             "memory_match_similarity": round(self.memory_match_similarity, 2),
             "memory_lesson": self.memory_lesson,
         }
+
+    def process_feedback(self, reward: float):
+        """Applies external reinforcement feedback to internal affect."""
+        r = float(np.clip(reward, -2.0, 2.0))
+        if r > 0:
+            self.valence_affect = float(np.clip(self.valence_affect + 0.15 * r, -1.0, 1.0))
+            self.confidence = float(min(1.0, self.confidence + 0.10 * r))
+            self.uncertainty = float(max(0.0, self.uncertainty - 0.10 * r))
+        elif r < 0:
+            self.valence_affect = float(np.clip(self.valence_affect - 0.20 * abs(r), -1.0, 1.0))
+            self.environmental_vigilance = float(min(1.0, self.environmental_vigilance + 0.15 * abs(r)))
+            self.uncertainty = float(min(1.0, self.uncertainty + 0.15 * abs(r)))
+            self.confidence = float(max(0.0, 1.0 - self.uncertainty))
 
     def sleep_reset(self):
         """During sleep, fatigue clears and emotional arousal returns to baseline."""

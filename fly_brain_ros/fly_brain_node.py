@@ -137,6 +137,11 @@ from fly_brain_ros.safety_supervisor import SafetySupervisor
 from fly_brain_ros.learning_subsystem import ConnectomeLearner, EpisodicMemory
 from fly_brain_ros.internal_state import InternalStateManager
 from fly_brain_ros.neuron_metadata import get_neuron_info, query_neuron_connections, BIOLOGICAL_METADATA
+from fly_brain_ros.checkpoint_config import (
+    get_canonical_checkpoint_path,
+    validate_checkpoint_file,
+    DEFAULT_CANONICAL_PATH,
+)
 
 
 def resolve_connectome_path(configured_path: str, default_filename: str) -> str:
@@ -257,7 +262,9 @@ class FlyBrainControllerPipeline:
         self.timeline = collections.deque(maxlen=40)
         self.last_modulated_vx = 0.0
         self.last_modulated_wz = 0.0
-        self.default_checkpoint_path = "/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json"
+        self.default_checkpoint_path = get_canonical_checkpoint_path()
+        self.is_asleep = False
+        self.lifecycle_state = "AWAKE"
 
 
     def start(self):
@@ -342,6 +349,8 @@ class FlyBrainControllerPipeline:
             'step_duration_sec': cmd.get('step_duration_sec', 0.0),
             'simulated_step_sec': cmd.get('simulated_step_sec', 0.0),
             'is_healthy': self.is_healthy(),
+            'is_asleep': getattr(self, 'is_asleep', False),
+            'lifecycle_state': getattr(self, 'lifecycle_state', 'AWAKE'),
             'total_neurons': self.engine.num_neurons if self.engine else 138639,
             'internal_state': self.internal_state.get_state_dict(),
             'learning': self.learner.to_dict(),
@@ -352,10 +361,15 @@ class FlyBrainControllerPipeline:
         }
 
     def create_checkpoint(self, filepath: Optional[str] = None, session_id: Optional[str] = None) -> Dict[str, Any]:
-        """Atomically saves versioned checkpoint of neural, learning, memory, and internal state."""
-        save_path = filepath or self.default_checkpoint_path
+        """Atomically saves versioned checkpoint of neural, learning, memory, and internal state.
+
+        Guarantees safe atomic replacement: writes to temporary file, syncs to disk (fsync),
+        verifies cryptographic SHA-256 and schema completeness on the written file, backs up
+        previous checkpoint, and only replaces atomically upon 100% verification.
+        """
+        save_path = get_canonical_checkpoint_path(filepath)
         os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
-        tmp_path = save_path + ".tmp"
+        tmp_path = save_path + f".tmp.{os.getpid()}_{int(time() * 1000)}"
         bak_path = save_path + ".bak"
 
         payload = {
@@ -372,6 +386,8 @@ class FlyBrainControllerPipeline:
             "episodic_memory": self.learner.episodic_memory.to_dict(),
             "lifecycle_state": {
                 "status": self.last_status,
+                "is_asleep": getattr(self, 'is_asleep', False),
+                "lifecycle_state": getattr(self, 'lifecycle_state', 'AWAKE'),
                 "timestamp": time(),
                 "last_sector_distances": list(self.last_sector_distances),
             }
@@ -383,15 +399,29 @@ class FlyBrainControllerPipeline:
         canonical_obj["manifest"]["sha256"] = hashlib.sha256(raw_bytes).hexdigest()
         payload = canonical_obj
 
-        with open(tmp_path, "w") as f:
+        # Write to temporary file with flush and fsync
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
 
+        # Pre-replacement integrity validation
+        is_valid, err_msg, summary = validate_checkpoint_file(tmp_path)
+        if not is_valid:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise RuntimeError(f"Checkpoint atomic write verification failed: {err_msg}")
+
+        # Preserve previous valid checkpoint as backup
         if os.path.exists(save_path):
             try:
                 shutil.copy2(save_path, bak_path)
             except Exception:
                 pass
 
+        # Atomic replacement of target
         os.replace(tmp_path, save_path)
         return payload["manifest"]
 
@@ -404,29 +434,20 @@ class FlyBrainControllerPipeline:
                      and arousal while strictly preserving learned policy parameters,
                      episodic memory records, and neural state.
         """
-        load_path = filepath or self.default_checkpoint_path
+        load_path = get_canonical_checkpoint_path(filepath)
         candidates = [load_path, load_path + ".bak"]
 
         for target in candidates:
             if not os.path.exists(target):
                 continue
+
+            is_valid, err_msg, summary = validate_checkpoint_file(target)
+            if not is_valid:
+                continue
+
             try:
-                with open(target, "r") as f:
+                with open(target, "r", encoding="utf-8") as f:
                     data = json.load(f)
-
-                manifest = data.get("manifest", {})
-                schema = str(manifest.get("schema_version", ""))
-                if not schema.startswith("2."):
-                    continue
-
-                stored_hash = manifest.pop("sha256", None)
-                canonical_bytes = json.dumps(data, sort_keys=True).encode("utf-8")
-                calc_hash = hashlib.sha256(canonical_bytes).hexdigest()
-                manifest["sha256"] = stored_hash
-
-                if stored_hash and stored_hash != calc_hash:
-                    # Corrupted file
-                    continue
 
                 if self.engine and "neural_state" in data:
                     self.engine.restore_dynamic_state(data["neural_state"])
@@ -496,6 +517,36 @@ class FlyBrainControllerPipeline:
 
             if not self.running:
                 break
+
+            # Sleep Mode Guard: While asleep, suspend motor output generation and hold zero velocity
+            if getattr(self, "is_asleep", False):
+                self.last_raw_vx = 0.0
+                self.last_raw_wz = 0.0
+                self.last_modulated_vx = 0.0
+                self.last_modulated_wz = 0.0
+                self.filtered_vx = 0.0
+                self.filtered_wz = 0.0
+                for nid in self.decoder.monitored_ids:
+                    self.motor_spike_trace[nid] = 0.0
+                zero_cmd = {
+                    'linear_x': 0.0,
+                    'angular_z': 0.0,
+                    'v_left_wheels': 0.0,
+                    'v_right_wheels': 0.0,
+                    'motor_rates': {},
+                    'step_duration_sec': 0.0,
+                    'simulated_step_sec': 0.0,
+                }
+                while not self.output_queue.empty():
+                    try: self.output_queue.get_nowait()
+                    except Exception: break
+                try:
+                    self.output_queue.put_nowait((zero_cmd, "ASLEEP"))
+                except Exception:
+                    pass
+                import time as _t
+                _t.sleep(0.05)
+                continue
 
             # 2. Advance the brain in one batch. The engine's step()
             # already accumulates spike counts over every simulation step.
@@ -698,7 +749,7 @@ class FlyBrainNode(Node):
         # Safety Supervisor Parameters
         self.declare_parameter("cmd_timeout_sec", 0.5)
         self.declare_parameter("obstacle_hard_stop_dist", 0.25)
-        self.declare_parameter("checkpoint_file", "/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json")
+        self.declare_parameter("checkpoint_file", DEFAULT_CANONICAL_PATH)
 
         # ROS Communication Configuration
         self.declare_parameter("scan_topic", "/scan")
@@ -769,7 +820,9 @@ class FlyBrainNode(Node):
         )
 
         # Persistent Checkpoint Restoration on Startup
-        self.checkpoint_file = str(self.get_parameter("checkpoint_file").value)
+        self.checkpoint_file = get_canonical_checkpoint_path(str(self.get_parameter("checkpoint_file").value))
+        self.is_asleep = False
+        self.lifecycle_state = "AWAKE"
         if self.checkpoint_file and os.path.exists(self.checkpoint_file):
             restored = self.pipeline.restore_checkpoint(self.checkpoint_file)
             if restored:
@@ -845,6 +898,14 @@ class FlyBrainNode(Node):
             10
         )
 
+        # Reinforcement learning feedback subscription (Reward, Punish)
+        self.learning_feedback_sub = self.create_subscription(
+            String,
+            '/fly_brain/learning_feedback',
+            self.learning_feedback_callback,
+            10
+        )
+
         # Interactive neuron inspector query & response
         self.neuron_query_sub = self.create_subscription(
             String,
@@ -900,16 +961,32 @@ class FlyBrainNode(Node):
         """Processes lifecycle transitions (SLEEP, WAKE, CONSOLIDATE, RESET_LEARNING)."""
         cmd = msg.data.strip().upper()
         if cmd == "SLEEP":
-            self.get_logger().info("Received SLEEP request: halting robot and saving atomic checkpoint...")
+            self.get_logger().info("Received SLEEP request: gating motor commands, consolidating memory, and saving atomic checkpoint...")
+            self.lifecycle_state = "ENTERING_SLEEP"
+            self.is_asleep = True
+            self.pipeline.is_asleep = True
+            self.pipeline.lifecycle_state = "ASLEEP"
+
+            # Immediately clamp output velocity to zero
             stop_twist = Twist()
             stop_twist.linear.x = 0.0
             stop_twist.angular.z = 0.0
             self.cmd_vel_pub.publish(stop_twist)
-            target = self.checkpoint_file or self.pipeline.default_checkpoint_path
+
+            # Consolidate memory during sleep
+            try:
+                self.pipeline.learner.episodic_memory.consolidate()
+            except Exception:
+                pass
+
+            target = get_canonical_checkpoint_path(self.checkpoint_file)
             manifest = self.pipeline.create_checkpoint(target)
-            self.get_logger().info(f"Checkpoint successfully committed: {manifest.get('sha256', '')[:12]}")
+            self.lifecycle_state = "ASLEEP"
+            self.get_logger().info(f"Sleep checkpoint committed: {manifest.get('sha256', '')[:12]} at {target}. Robot is ASLEEP.")
+
         elif cmd == "WAKE":
-            target = self.checkpoint_file or self.pipeline.default_checkpoint_path
+            self.lifecycle_state = "WAKING"
+            target = get_canonical_checkpoint_path(self.checkpoint_file)
             self.get_logger().info(f"Received WAKE request: restoring from {target}...")
             self.pipeline.restore_checkpoint(target, is_wake=True)
             self.teleop_raw_vx = 0.0
@@ -920,12 +997,34 @@ class FlyBrainNode(Node):
             self.last_scan_received_time = time()
             self.pipeline.safety.notify_sensor_heartbeat()
             self.pipeline.safety.notify_brain_heartbeat()
+            self.pipeline.is_asleep = False
+            self.pipeline.lifecycle_state = "AWAKE"
+            self.is_asleep = False
+            self.lifecycle_state = "AWAKE"
+            self.get_logger().info("Robot is AWAKE. Autonomous brain and safety supervisor control restored.")
+
         elif cmd == "CONSOLIDATE":
             report = self.pipeline.learner.episodic_memory.consolidate()
             self.get_logger().info(f"Memory consolidated: {report.get('summary')}")
+
         elif cmd == "RESET_LEARNING":
             self.pipeline.learner.reset_learning()
             self.get_logger().info("Learned navigation parameters reset to baseline.")
+
+    def learning_feedback_callback(self, msg: String):
+        """Processes real-time reinforcement feedback (reward / punish) from web dashboard."""
+        try:
+            data = json.loads(msg.data)
+            reward = float(data.get("reward", 0.0))
+            note = str(data.get("note", ""))
+            res = self.pipeline.learner.apply_feedback(reward, note)
+            self.pipeline.internal_state.process_feedback(reward)
+            self.get_logger().info(
+                f"Reinforcement feedback applied: reward={reward:+.2f}, "
+                f"cumulative={res.get('cumulative_reward')}, updates={res.get('updates')}"
+            )
+        except Exception as e:
+            self.get_logger().error(f"Failed to process learning feedback: {e}")
 
     def query_neuron_callback(self, msg: String):
         """Returns detailed physiological inspection for the requested neuron."""
@@ -994,6 +1093,34 @@ class FlyBrainNode(Node):
         """Timer callback publishing safe Twist commands to /cmd_vel."""
         now = time()
         twist = Twist()
+
+        # Rule 0: Hard Sleep / Inactive Lifecycle Gate
+        # When asleep or entering sleep, velocity is strictly clamped to 0.0 at the authoritative gate.
+        if self.is_asleep or self.lifecycle_state in ("ASLEEP", "ENTERING_SLEEP"):
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+            self.cmd_vel_pub.publish(twist)
+            self.published_cmd_count += 1
+
+            try:
+                snapshot = self.pipeline.get_telemetry_snapshot()
+                snapshot['control_mode'] = self.control_mode
+                snapshot['active_source'] = "SLEEP_GATE"
+                snapshot['status'] = "ASLEEP"
+                snapshot['lifecycle_state'] = self.lifecycle_state
+                snapshot['is_asleep'] = True
+                snapshot['safe_vx'] = 0.0
+                snapshot['safe_wz'] = 0.0
+                snapshot['raw_linear_x'] = 0.0
+                snapshot['raw_angular_z'] = 0.0
+                snapshot['published_cmd_count'] = self.published_cmd_count
+                snapshot['scan_received_count'] = self.scan_received_count
+                telemetry_msg = String()
+                telemetry_msg.data = json.dumps(snapshot)
+                self.telemetry_pub.publish(telemetry_msg)
+            except Exception:
+                pass
+            return
 
         # Rule 1: Stale Sensor Watchdog Check (Requires fresh sensor scan before motion)
         if self.scan_received_count == 0 or (now - self.last_scan_received_time) > self.cmd_timeout_sec:
