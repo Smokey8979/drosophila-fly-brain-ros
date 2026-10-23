@@ -21,6 +21,12 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
+from fly_brain_ros.checkpoint_config import (
+    get_canonical_checkpoint_path,
+    validate_checkpoint_file,
+    DEFAULT_CANONICAL_PATH,
+)
+
 
 class SimulationLifecycleSupervisor:
     """Coordinates simulation processes, atomic checkpointing, and sleep/wake transitions."""
@@ -35,11 +41,11 @@ class SimulationLifecycleSupervisor:
 
     def __init__(
         self,
-        checkpoint_path: str = "/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json",
+        checkpoint_path: Optional[str] = None,
         ros_bridge_node: Optional[Any] = None,
     ):
         self.lock = threading.RLock()
-        self.checkpoint_path = checkpoint_path
+        self.checkpoint_path = get_canonical_checkpoint_path(checkpoint_path)
         self.ros_bridge = ros_bridge_node
         self.current_state = self.STATE_SLEEPING
         self.subproc: Optional[subprocess.Popen] = None
@@ -183,10 +189,21 @@ class SimulationLifecycleSupervisor:
             if os.path.exists(self.checkpoint_path + ".bak"):
                 self.checkpoint_path = self.checkpoint_path + ".bak"
 
-        # Start simulation stack
-        success = self.start_simulation(headless=headless, checkpoint_file=self.checkpoint_path)
-        if not success:
-            return self.get_status()
+        # Notify running ROS 2 nodes via lifecycle topic
+        if self.ros_bridge is not None:
+            try:
+                self.ros_bridge.send_lifecycle_command("WAKE")
+            except Exception:
+                pass
+
+        # Start child simulation stack if managed mode is active
+        if self.subproc is not None:
+            success = self.start_simulation(headless=headless, checkpoint_file=self.checkpoint_path)
+            if not success:
+                return self.get_status()
+
+        with self.lock:
+            self._record_transition(self.STATE_AWAKE, "Wake sequence completed; active simulation restored.")
 
         return self.get_status()
 

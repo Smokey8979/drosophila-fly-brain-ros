@@ -43,12 +43,19 @@ if [[ "$1" == "--help" || "$1" == "-h" ]]; then
     exit 0
 fi
 
-# Directory resolution
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Directory resolution (handling symlinks transparently)
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+    DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 REPO_ROOT="$SCRIPT_DIR"
 PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-CHECKPOINT_FILE="$PARENT_DIR/checkpoints/fly_brain_checkpoint.json"
+CHECKPOINT_FILE="${FLY_BRAIN_CHECKPOINT_PATH:-$PARENT_DIR/checkpoints/fly_brain_checkpoint.json}"
+export FLY_BRAIN_CHECKPOINT_PATH="$CHECKPOINT_FILE"
 LOCKFILE="/tmp/fly_brain_ros_run.pid"
 DASHBOARD_PORT=5000
 DASHBOARD_URL="http://127.0.0.1:${DASHBOARD_PORT}"
@@ -305,6 +312,9 @@ EOF
     else
         echo " Neural State Saved:     NO (Verification Failed / Unsaved)"
         echo " Checkpoint Path:        $CHECKPOINT_FILE"
+        if [ -n "$cp_validation" ]; then
+            echo " Failure Reason:         $cp_validation"
+        fi
     fi
     echo " Shutdown Trigger:       $trigger"
     echo " Owned Processes:        Terminated cleanly"
