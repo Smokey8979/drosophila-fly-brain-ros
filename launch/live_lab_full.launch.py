@@ -62,6 +62,7 @@ def generate_launch_description():
     headless = LaunchConfiguration("headless", default="false")
     start_dashboard = LaunchConfiguration("start_dashboard", default="true")
     dashboard_port = LaunchConfiguration("dashboard_port", default="5000")
+    start_asleep = LaunchConfiguration("start_asleep", default="false")
 
     declare_use_sim_time = DeclareLaunchArgument(
         "use_sim_time",
@@ -82,6 +83,11 @@ def generate_launch_description():
         "dashboard_port",
         default_value="5000",
         description="Port for the interactive web dashboard server",
+    )
+    declare_start_asleep = DeclareLaunchArgument(
+        "start_asleep",
+        default_value="false",
+        description="Start robot in persistent ASLEEP state if true",
     )
 
     # 1. Start Gazebo Fortress Simulator via ros_gz_sim
@@ -133,7 +139,13 @@ def generate_launch_description():
         package="fly_brain_ros",
         executable="fly_brain_node",
         name="fly_brain_node",
-        parameters=[config_file, {"use_sim_time": use_sim_time}],
+        parameters=[
+            config_file,
+            {
+                "use_sim_time": use_sim_time,
+                "start_asleep": PythonExpression(["'", start_asleep, "'.lower() in ['true', '1', 'yes']"]),
+            },
+        ],
         output="screen",
     )
 
@@ -156,6 +168,7 @@ def generate_launch_description():
         declare_headless,
         declare_start_dashboard,
         declare_dashboard_port,
+        declare_start_asleep,
         gz_sim,
         spawn_robot,
         bridge,

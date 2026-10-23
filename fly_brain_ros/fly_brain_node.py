@@ -750,6 +750,8 @@ class FlyBrainNode(Node):
         self.declare_parameter("cmd_timeout_sec", 0.5)
         self.declare_parameter("obstacle_hard_stop_dist", 0.25)
         self.declare_parameter("checkpoint_file", DEFAULT_CANONICAL_PATH)
+        self.declare_parameter("start_asleep", False)
+        self.declare_parameter("startup_grace_period_sec", 0.0)
 
         # ROS Communication Configuration
         self.declare_parameter("scan_topic", "/scan")
@@ -786,6 +788,7 @@ class FlyBrainNode(Node):
         self.cmd_vel_topic = str(self.get_parameter("cmd_vel_topic").value)
         self.rate_hz = max(1.0, float(self.get_parameter("controller_rate_hz").value))
         self.cmd_timeout_sec = cmd_timeout
+        self.hard_stop_dist = hard_stop_dist
 
         # -------------------------------------------------------------
         # 3. Instantiate Persistent Connectome Pipeline
@@ -819,16 +822,37 @@ class FlyBrainNode(Node):
             f"{self.pipeline.engine.num_neurons} neurons active."
         )
 
-        # Persistent Checkpoint Restoration on Startup
+        # Persistent Checkpoint Restoration & Deliberate Startup Policy
         self.checkpoint_file = get_canonical_checkpoint_path(str(self.get_parameter("checkpoint_file").value))
-        self.is_asleep = False
-        self.lifecycle_state = "AWAKE"
+        self.start_asleep_param = bool(self.get_parameter("start_asleep").value)
+
+        # Deliberate startup policy: default to AWAKE regardless of how the previous session ended,
+        # separating durable model state (weights, memories, affect) from operational process state.
+        if self.start_asleep_param:
+            self.is_asleep = True
+            self.lifecycle_state = "ASLEEP"
+            self.pipeline.is_asleep = True
+            self.pipeline.lifecycle_state = "ASLEEP"
+            self.last_motion_state = "ASLEEP"
+        else:
+            self.is_asleep = False
+            self.lifecycle_state = "AWAKE"
+            self.pipeline.is_asleep = False
+            self.pipeline.lifecycle_state = "AWAKE"
+            self.last_motion_state = "WAITING_FOR_SENSORS"
+
         if self.checkpoint_file and os.path.exists(self.checkpoint_file):
-            restored = self.pipeline.restore_checkpoint(self.checkpoint_file)
+            restored = self.pipeline.restore_checkpoint(self.checkpoint_file, is_wake=False)
             if restored:
-                self.get_logger().info(f"Successfully restored persistent brain checkpoint from {self.checkpoint_file}")
+                self.get_logger().info(
+                    f"Successfully restored persistent brain checkpoint from {self.checkpoint_file}. "
+                    f"Startup lifecycle initialized to deliberate operational state: {self.lifecycle_state}."
+                )
             else:
                 self.get_logger().warn(f"Failed to restore checkpoint from {self.checkpoint_file}")
+
+        self.node_startup_time = time()
+        self.startup_grace_period_sec = float(self.get_parameter("startup_grace_period_sec").value)
 
 
         # Watchdog Tracking
@@ -960,7 +984,16 @@ class FlyBrainNode(Node):
     def lifecycle_callback(self, msg: String):
         """Processes lifecycle transitions (SLEEP, WAKE, CONSOLIDATE, RESET_LEARNING)."""
         cmd = msg.data.strip().upper()
+        now = time()
         if cmd == "SLEEP":
+            # Protect deliberate AWAKE startup from stale / late-joining discovery messages
+            if 0.0 <= (now - self.node_startup_time) < self.startup_grace_period_sec and not self.start_asleep_param:
+                self.get_logger().warn(
+                    f"Ignored stale/external SLEEP command received during startup window ({now - self.node_startup_time:.3f}s < {self.startup_grace_period_sec}s). "
+                    f"Robot remains in deliberate startup state: {self.lifecycle_state}."
+                )
+                return
+
             self.get_logger().info("Received SLEEP request: gating motor commands, consolidating memory, and saving atomic checkpoint...")
             self.lifecycle_state = "ENTERING_SLEEP"
             self.is_asleep = True
@@ -994,7 +1027,8 @@ class FlyBrainNode(Node):
             self.last_teleop_time = 0.0
             self.teleop_filtered_vx = 0.0
             self.teleop_filtered_wz = 0.0
-            self.last_scan_received_time = time()
+            # Force receipt of fresh sensor scan after wake before motion
+            self.last_scan_received_time = 0.0
             self.pipeline.safety.notify_sensor_heartbeat()
             self.pipeline.safety.notify_brain_heartbeat()
             self.pipeline.is_asleep = False
@@ -1093,20 +1127,29 @@ class FlyBrainNode(Node):
         """Timer callback publishing safe Twist commands to /cmd_vel."""
         now = time()
         twist = Twist()
+        active_source = "NONE"
+        status = "NOMINAL"
+        motion_state = "MOVING"
 
         # Rule 0: Hard Sleep / Inactive Lifecycle Gate
         # When asleep or entering sleep, velocity is strictly clamped to 0.0 at the authoritative gate.
         if self.is_asleep or self.lifecycle_state in ("ASLEEP", "ENTERING_SLEEP"):
+            motion_state = "ASLEEP"
             twist.linear.x = 0.0
             twist.angular.z = 0.0
             self.cmd_vel_pub.publish(twist)
             self.published_cmd_count += 1
+
+            if motion_state != getattr(self, 'last_motion_state', None):
+                self.get_logger().info(f"[MOTION_STATE] {getattr(self, 'last_motion_state', 'INIT')} -> {motion_state} (asleep=True, gate clamped to 0.0)")
+                self.last_motion_state = motion_state
 
             try:
                 snapshot = self.pipeline.get_telemetry_snapshot()
                 snapshot['control_mode'] = self.control_mode
                 snapshot['active_source'] = "SLEEP_GATE"
                 snapshot['status'] = "ASLEEP"
+                snapshot['motion_state'] = motion_state
                 snapshot['lifecycle_state'] = self.lifecycle_state
                 snapshot['is_asleep'] = True
                 snapshot['safe_vx'] = 0.0
@@ -1124,15 +1167,47 @@ class FlyBrainNode(Node):
 
         # Rule 1: Stale Sensor Watchdog Check (Requires fresh sensor scan before motion)
         if self.scan_received_count == 0 or (now - self.last_scan_received_time) > self.cmd_timeout_sec:
+            motion_state = "WAITING_FOR_SENSORS"
             twist.linear.x = 0.0
             twist.angular.z = 0.0
             self.cmd_vel_pub.publish(twist)
             self.published_cmd_count += 1
+
+            if motion_state != getattr(self, 'last_motion_state', None):
+                dt_scan = now - self.last_scan_received_time if self.scan_received_count > 0 else 999.0
+                self.get_logger().info(
+                    f"[MOTION_STATE] {getattr(self, 'last_motion_state', 'INIT')} -> {motion_state} "
+                    f"(scans_received={self.scan_received_count}, dt_scan={dt_scan:.2f}s)"
+                )
+                self.last_motion_state = motion_state
+
+            try:
+                snapshot = self.pipeline.get_telemetry_snapshot()
+                snapshot['control_mode'] = self.control_mode
+                snapshot['active_source'] = "WATCHDOG"
+                snapshot['status'] = "WAITING_FOR_SENSORS"
+                snapshot['motion_state'] = motion_state
+                snapshot['lifecycle_state'] = self.lifecycle_state
+                snapshot['is_asleep'] = False
+                snapshot['safe_vx'] = 0.0
+                snapshot['safe_wz'] = 0.0
+                snapshot['raw_linear_x'] = 0.0
+                snapshot['raw_angular_z'] = 0.0
+                snapshot['published_cmd_count'] = self.published_cmd_count
+                snapshot['scan_received_count'] = self.scan_received_count
+                telemetry_msg = String()
+                telemetry_msg.data = json.dumps(snapshot)
+                self.telemetry_pub.publish(telemetry_msg)
+            except Exception:
+                pass
             return
 
         # Rule 2: Neural Worker Health Check
         if not self.pipeline.is_healthy():
-            self.get_logger().error("Neural brain worker thread is not healthy! Halting vehicle.")
+            motion_state = "SAFETY_STOP"
+            if motion_state != getattr(self, 'last_motion_state', None):
+                self.get_logger().error(f"[MOTION_STATE] {getattr(self, 'last_motion_state', 'INIT')} -> {motion_state} (neural worker thread unhealthy)")
+                self.last_motion_state = motion_state
             twist.linear.x = 0.0
             twist.angular.z = 0.0
             self.cmd_vel_pub.publish(twist)
@@ -1142,6 +1217,7 @@ class FlyBrainNode(Node):
         # Rule 3: Single Authoritative Command Selection Architecture
         d_l, d_r, d_f = self.pipeline.last_sector_distances
         d_min = min(d_l, d_r, d_f)
+        hard_stop_threshold = getattr(self, 'hard_stop_dist', getattr(self.pipeline.safety, 'hard_stop_dist', 0.25))
 
         if self.control_mode == "TELEOP":
             # Check teleoperation watchdog
@@ -1176,12 +1252,24 @@ class FlyBrainNode(Node):
             active_source = "NEURAL"
             raw_cmd_vx = getattr(self.pipeline, 'last_raw_vx', safe_vx)
             raw_cmd_wz = getattr(self.pipeline, 'last_raw_wz', safe_wz)
+            if d_min <= hard_stop_threshold:
+                safe_vx, safe_wz, status = 0.0, 0.0, "SAFETY_OVERRIDE_OBSTACLE"
 
         # Rule 4: Critical Fault & Emergency Stops
-        if status in ("FAULT_STALE_SENSOR", "FAULT_BRAIN_TIMEOUT", "EMERGENCY_STOP", "FAULT_INVALID_VALUES", "SAFETY_BLOCKED"):
+        if (
+            d_min <= hard_stop_threshold
+            or status in ("FAULT_STALE_SENSOR", "FAULT_BRAIN_TIMEOUT", "EMERGENCY_STOP", "FAULT_INVALID_VALUES", "SAFETY_BLOCKED", "SAFETY_OVERRIDE_OBSTACLE")
+            or (isinstance(status, str) and (status.startswith("FAULT") or status.startswith("SAFETY_BLOCKED") or status.startswith("SAFETY_OVERRIDE")))
+        ):
+            motion_state = "SAFETY_STOP"
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+        elif abs(safe_vx) < 1e-4 and abs(safe_wz) < 1e-4:
+            motion_state = "AWAKE_NO_MOTOR_OUTPUT"
             twist.linear.x = 0.0
             twist.angular.z = 0.0
         else:
+            motion_state = "MOVING"
             twist.linear.x = float(safe_vx)
             twist.angular.z = float(safe_wz)
 
@@ -1189,12 +1277,20 @@ class FlyBrainNode(Node):
         self.cmd_vel_pub.publish(twist)
         self.published_cmd_count += 1
 
+        if motion_state != getattr(self, 'last_motion_state', None):
+            self.get_logger().info(
+                f"[MOTION_STATE] {getattr(self, 'last_motion_state', 'INIT')} -> {motion_state} "
+                f"(vx={twist.linear.x:.3f}, wz={twist.angular.z:.3f}, source={active_source}, status={status})"
+            )
+            self.last_motion_state = motion_state
+
         # Rule 5: Publish Comprehensive Telemetry
         try:
             snapshot = self.pipeline.get_telemetry_snapshot()
             snapshot['control_mode'] = self.control_mode
             snapshot['active_source'] = active_source
             snapshot['status'] = status
+            snapshot['motion_state'] = motion_state
             snapshot['safe_vx'] = float(safe_vx)
             snapshot['safe_wz'] = float(safe_wz)
             snapshot['raw_linear_x'] = float(raw_cmd_vx)

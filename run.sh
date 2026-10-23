@@ -95,6 +95,7 @@ fi
 # 2. Environment Setup
 # ------------------------------------------------------------------------------
 unset RMW_IMPLEMENTATION
+pkill -f "ros2 topic pub" 2>/dev/null || true
 
 if [ -f "/opt/ros/humble/setup.bash" ]; then
     # shellcheck source=/dev/null
@@ -162,9 +163,6 @@ graceful_save_and_shutdown() {
         -H "Content-Type: application/json" \
         -d '{"state": "pause"}' >/dev/null 2>&1 || true
 
-    ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist \
-        "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}" >/dev/null 2>&1 &
-
     local mtime_before=0
     if [ -f "$CHECKPOINT_FILE" ]; then
         mtime_before=$(stat -c %Y "$CHECKPOINT_FILE" 2>/dev/null || echo 0)
@@ -178,12 +176,11 @@ graceful_save_and_shutdown() {
         sleep_api_ok=1
         echo "      Production /api/lifecycle/sleep endpoint responded OK."
     else
-        echo "      Notice: Dashboard /api/lifecycle/sleep not responsive."
+        echo "      Notice: Dashboard /api/lifecycle/sleep not responsive. Using fallback CLI broadcast..."
+        # Synchronous bounded fallback with volatile durability so DDS never retains for future nodes
+        timeout 2 ros2 topic pub --once --qos-durability volatile /fly_brain/lifecycle_control std_msgs/msg/String \
+            "data: 'SLEEP'" >/dev/null 2>&1 || true
     fi
-
-    # Authoritative broadcast via ROS 2 lifecycle control topic for guaranteed redundancy
-    ros2 topic pub --once /fly_brain/lifecycle_control std_msgs/msg/String \
-        "data: 'SLEEP'" >/dev/null 2>&1 &
 
     # Step 3: Wait for checkpoint commit and lifecycle status update
     echo "[3/6] Waiting for atomic checkpoint flush..."
@@ -344,6 +341,7 @@ LAUNCH_ARGS=(
     "use_sim_time:=false"
     "dashboard_port:=${DASHBOARD_PORT}"
     "start_dashboard:=true"
+    "start_asleep:=false"
 )
 
 # Append any custom user arguments

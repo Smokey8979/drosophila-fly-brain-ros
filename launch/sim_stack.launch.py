@@ -63,6 +63,11 @@ def generate_launch_description():
         default_value="/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json",
         description="Path to persistent brain checkpoint file for restoration",
     )
+    declare_start_asleep = DeclareLaunchArgument(
+        "start_asleep",
+        default_value="false",
+        description="Start robot in persistent ASLEEP state if true",
+    )
 
     # 1. Start Gazebo Fortress Simulator
     gz_args = PythonExpression([
@@ -107,6 +112,8 @@ def generate_launch_description():
         output="screen",
     )
 
+    start_asleep = LaunchConfiguration("start_asleep", default="false")
+
     # 4. Drosophila Neural Connectome Controller Node
     fly_brain_node = Node(
         package="fly_brain_ros",
@@ -117,6 +124,7 @@ def generate_launch_description():
             {
                 "use_sim_time": use_sim_time,
                 "checkpoint_file": checkpoint_file,
+                "start_asleep": PythonExpression(["'", start_asleep, "'.lower() in ['true', '1', 'yes']"]),
             }
         ],
         output="screen",
@@ -126,6 +134,7 @@ def generate_launch_description():
         declare_use_sim_time,
         declare_headless,
         declare_checkpoint_file,
+        declare_start_asleep,
         gz_sim,
         spawn_robot,
         bridge,

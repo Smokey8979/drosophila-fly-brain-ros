@@ -43,11 +43,12 @@ class SimulationLifecycleSupervisor:
         self,
         checkpoint_path: Optional[str] = None,
         ros_bridge_node: Optional[Any] = None,
+        initial_state: str = STATE_SLEEPING,
     ):
         self.lock = threading.RLock()
         self.checkpoint_path = get_canonical_checkpoint_path(checkpoint_path)
         self.ros_bridge = ros_bridge_node
-        self.current_state = self.STATE_SLEEPING
+        self.current_state = initial_state
         self.subproc: Optional[subprocess.Popen] = None
         self.pgid: Optional[int] = None
 
@@ -59,7 +60,7 @@ class SimulationLifecycleSupervisor:
 
         # Ensure checkpoint directory exists
         os.makedirs(os.path.dirname(os.path.abspath(self.checkpoint_path)), exist_ok=True)
-        self._record_transition(self.STATE_SLEEPING, "Initialized supervisor in sleeping state.")
+        self._record_transition(initial_state, f"Initialized supervisor in {initial_state} state.")
 
     def _record_transition(self, new_state: str, reason: str = ""):
         self.current_state = new_state

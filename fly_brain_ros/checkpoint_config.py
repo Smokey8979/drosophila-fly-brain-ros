@@ -52,6 +52,9 @@ def compute_checkpoint_hash(data: Dict[str, Any]) -> str:
     return hashlib.sha256(canonical_bytes).hexdigest()
 
 
+calculate_checkpoint_sha256 = compute_checkpoint_hash
+
+
 def validate_checkpoint_data(data: Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]:
     """Validates checkpoint structure, schema version, and SHA-256 integrity.
     

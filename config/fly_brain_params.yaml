@@ -33,3 +33,7 @@ fly_brain_node:
     scan_topic: "/scan"
     cmd_vel_topic: "/cmd_vel"
     controller_rate_hz: 10.0     # Hz (controller execution and cmd_vel publication frequency)
+
+    # Deliberate Lifecycle Startup Policy
+    start_asleep: false          # Deliberate default: starts AWAKE
+    startup_grace_period_sec: 1.5 # Ignores stale / late-joining SLEEP commands during node discovery window
