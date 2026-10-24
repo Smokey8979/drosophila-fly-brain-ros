@@ -2138,9 +2138,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         arenaCtx.fillStyle = "rgba(13, 17, 26, 0.45)";
         arenaCtx.fillRect(nwX, nwY, seX - nwX, seY - nwY);
 
-        // Functional Biological Zones
+        // Functional Biological Zones (omitting removed Sugar & Shock circle markers)
         if (bounds.zones) {
+          const excludedZones = new Set(["sucrose_reward", "shock_hazard", "sugar", "shock"]);
           bounds.zones.forEach(z => {
+            if (excludedZones.has(z.name.toLowerCase())) return;
             const [zx, zy] = toScreen(z.x, z.y);
             const zr = z.radius * scale;
             arenaCtx.fillStyle = z.color;
@@ -2155,13 +2157,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             arenaCtx.font = "8px monospace";
             arenaCtx.fillStyle = z.border;
             arenaCtx.textAlign = "center";
-            arenaCtx.fillText(z.name === "sucrose_reward" ? "SUGAR (+)" : "SHOCK (-)", zx, zy - zr - 3);
+            arenaCtx.fillText(z.name, zx, zy - zr - 3);
           });
         }
 
-        // Fixed World Obstacle Cylinders
+        // Fixed World Obstacles (omitting removed Center, Left & Right circle markers)
         if (bounds.fixed_obstacles) {
+          const excludedObs = new Set(["center_pillar", "left_pillar", "right_pillar", "center", "left", "right"]);
           bounds.fixed_obstacles.forEach(obs => {
+            if (excludedObs.has(obs.name.toLowerCase())) return;
             const [ox, oy] = toScreen(obs.x, obs.y);
             const rPx = obs.radius * scale;
             arenaCtx.fillStyle = "rgba(255, 152, 0, 0.22)";
