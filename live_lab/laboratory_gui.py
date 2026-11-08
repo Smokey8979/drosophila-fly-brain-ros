@@ -11,6 +11,7 @@ import math
 import os
 import sys
 import time
+from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Dict, Any, List, Optional
@@ -377,17 +378,28 @@ class LiveBrainLaboratory:
         self._update_ui_state("MODE: TEACHING (INSTRUCTOR ACTIVE)")
 
     def cmd_save_checkpoint(self):
-        path = "/home/om/Desktop/robo_fly/experiments/results/curriculum/live_lab_checkpoint.json"
+        curriculum_dir = Path(__file__).resolve().parents[1] / "experiments" / "results" / "curriculum"
+        os.makedirs(curriculum_dir, exist_ok=True)
+        path = str(curriculum_dir / "live_lab_checkpoint.json")
         self.agent.save_checkpoint(path)
         messagebox.showinfo("Checkpoint Saved", f"Plastic synaptic memory successfully serialized to:\n{path}")
 
     def cmd_load_checkpoint(self):
-        path = "/home/om/Desktop/robo_fly/experiments/results/curriculum/conditioned_weights.json"
-        if os.path.exists(path):
+        curriculum_dir = Path(__file__).resolve().parents[1] / "experiments" / "results" / "curriculum"
+        candidates = [
+            curriculum_dir / "conditioned_weights.json",
+            Path("/home/om/Desktop/robo_fly/experiments/results/curriculum/conditioned_weights.json"),
+        ]
+        path = None
+        for cand in candidates:
+            if cand.exists():
+                path = str(cand)
+                break
+        if path and os.path.exists(path):
             self.agent.load_checkpoint(path)
             messagebox.showinfo("Checkpoint Loaded", f"Loaded conditioned synaptic weights from:\n{path}")
         else:
-            messagebox.showwarning("File Not Found", f"No checkpoint file found at {path}")
+            messagebox.showwarning("File Not Found", f"No checkpoint file found at {curriculum_dir / 'conditioned_weights.json'}")
 
     def cmd_reset_episode(self):
         self.agent.reset(x=0.0, y=-15.0, theta=math.pi / 2.0, reset_memory=False)

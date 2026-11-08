@@ -29,7 +29,17 @@ class TestPersistenceCheckpoints(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        data_dir = Path(__file__).resolve().parents[2] / "fly-brain" / "data"
+        candidates = [
+            Path(__file__).resolve().parents[1] / "data",
+            Path(__file__).resolve().parents[2] / "fly-brain" / "data",
+            Path(__file__).resolve().parents[2] / "data",
+            Path("/home/om/Desktop/robo_fly/fly-brain/data"),
+        ]
+        data_dir = Path(__file__).resolve().parents[1] / "data"
+        for cand in candidates:
+            if cand.exists():
+                data_dir = cand
+                break
         comp_csv = data_dir / "2025_Completeness_783.csv"
         conn_pqt = data_dir / "2025_Connectivity_783.parquet"
         cls.comp_csv = comp_csv

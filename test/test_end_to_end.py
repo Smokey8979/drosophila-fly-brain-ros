@@ -10,6 +10,7 @@ Demonstrates the complete sequence:
 6. MockFourWheelChassis integrates wheel speeds and updates robot pose.
 """
 
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -33,9 +34,26 @@ class TestEndToEndClosedLoop(unittest.TestCase):
     def setUpClass(cls):
         print("\n=== [SETUP] Initializing Whole-Brain Fly Connectome for Closed-Loop Test ===")
         t0 = time()
-        comp_path = "/home/om/Desktop/robo_fly/fly-brain/data/2025_Completeness_783.csv"
-        conn_path = "/home/om/Desktop/robo_fly/fly-brain/data/2025_Connectivity_783.parquet"
-        cache_dir = "/home/om/Desktop/robo_fly/fly-brain/data"
+        candidates = [
+            os.environ.get("FLY_BRAIN_DATA_DIR", ""),
+            pkg_root / "data",
+            pkg_root.parent / "fly-brain" / "data",
+            pkg_root.parent / "data",
+            Path.cwd() / "data",
+            Path.cwd() / "fly-brain" / "data",
+            Path("/home/om/Desktop/robo_fly/fly-brain/data"),
+        ]
+        data_dir = None
+        for cand in candidates:
+            if cand and os.path.exists(str(cand)):
+                data_dir = Path(cand)
+                break
+        if data_dir is None:
+            data_dir = pkg_root / "data"
+
+        comp_path = str(data_dir / "2025_Completeness_783.csv")
+        conn_path = str(data_dir / "2025_Connectivity_783.parquet")
+        cache_dir = str(data_dir)
 
         cls.engine = FlyBrainEngine(
             comp_path=comp_path,

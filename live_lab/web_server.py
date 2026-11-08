@@ -103,7 +103,10 @@ except ImportError:
         def resolve_neuron_name_or_alias(name):
             return None
         BIOLOGICAL_METADATA = {}
-        DEFAULT_CANONICAL_PATH = "/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json"
+        DEFAULT_CANONICAL_PATH = os.environ.get(
+            "FLY_BRAIN_CHECKPOINT_PATH",
+            str(Path(__file__).resolve().parents[1] / "checkpoints" / "fly_brain_checkpoint.json")
+        )
         def get_canonical_checkpoint_path(p=None):
             return p or DEFAULT_CANONICAL_PATH
         def validate_checkpoint_file(p):
@@ -2663,11 +2666,20 @@ def api_connectome_spatial_layout():
 def api_connectome_spatial_coords_bin():
     """Streams compact Float32 binary buffer for fast WebGL BufferGeometry rendering."""
     global cached_spatial_atlas
-    bin_file = Path("/home/om/Desktop/robo_fly/fly-brain/data/connectome_spatial_coords.bin")
-    if bin_file.exists():
-        with open(bin_file, "rb") as f:
-            data = f.read()
-        return Response(data, mimetype="application/octet-stream")
+    candidates = [
+        os.environ.get("FLY_BRAIN_SPATIAL_COORDS_BIN", ""),
+        Path(__file__).resolve().parents[1] / "data" / "connectome_spatial_coords.bin",
+        Path(__file__).resolve().parents[2] / "fly-brain" / "data" / "connectome_spatial_coords.bin",
+        Path(__file__).resolve().parents[2] / "data" / "connectome_spatial_coords.bin",
+        Path.cwd() / "data" / "connectome_spatial_coords.bin",
+        Path.cwd() / "fly-brain" / "data" / "connectome_spatial_coords.bin",
+        Path("/home/om/Desktop/robo_fly/fly-brain/data/connectome_spatial_coords.bin"),
+    ]
+    for cand in candidates:
+        if cand and os.path.exists(str(cand)):
+            with open(cand, "rb") as f:
+                data = f.read()
+            return Response(data, mimetype="application/octet-stream")
 
     if cached_spatial_atlas is None:
         coords, _ = generate_spatial_atlas()

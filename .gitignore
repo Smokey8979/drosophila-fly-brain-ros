@@ -12,6 +12,8 @@ test_logs/
 
 # Checkpoints, PyTorch weights & Large biological datasets
 checkpoints/
+data
+fly-brain-upstream/
 *.pth
 *.pt
 *.parquet

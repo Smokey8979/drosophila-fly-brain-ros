@@ -41,11 +41,30 @@ def generate_launch_description():
     model_sdf = os.path.join(pkg_dir, "models", "four_wheel_fly_robot", "model.sdf")
     config_file = os.path.join(pkg_dir, "config", "fly_brain_params.yaml")
 
+    # Resolve canonical checkpoint default dynamically
+    default_checkpoint_file = os.environ.get("FLY_BRAIN_CHECKPOINT_PATH", "")
+    if not default_checkpoint_file:
+        try:
+            from fly_brain_ros.checkpoint_config import get_canonical_checkpoint_path
+            default_checkpoint_file = get_canonical_checkpoint_path()
+        except Exception:
+            candidates = [
+                os.path.join(pkg_dir, "checkpoints", "fly_brain_checkpoint.json"),
+                os.path.join(str(Path(pkg_dir).parent), "checkpoints", "fly_brain_checkpoint.json"),
+                "/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json",
+            ]
+            for cand in candidates:
+                if os.path.exists(cand):
+                    default_checkpoint_file = cand
+                    break
+            if not default_checkpoint_file:
+                default_checkpoint_file = os.path.join(pkg_dir, "checkpoints", "fly_brain_checkpoint.json")
+
     use_sim_time = LaunchConfiguration("use_sim_time", default="false")
     headless = LaunchConfiguration("headless", default="false")
     checkpoint_file = LaunchConfiguration(
         "checkpoint_file",
-        default="/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json"
+        default=default_checkpoint_file
     )
 
     declare_use_sim_time = DeclareLaunchArgument(
@@ -60,7 +79,7 @@ def generate_launch_description():
     )
     declare_checkpoint_file = DeclareLaunchArgument(
         "checkpoint_file",
-        default_value="/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json",
+        default_value=default_checkpoint_file,
         description="Path to persistent brain checkpoint file for restoration",
     )
     declare_start_asleep = DeclareLaunchArgument(

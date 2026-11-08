@@ -54,8 +54,18 @@ SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 REPO_ROOT="$SCRIPT_DIR"
 PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-CHECKPOINT_FILE="${FLY_BRAIN_CHECKPOINT_PATH:-$PARENT_DIR/checkpoints/fly_brain_checkpoint.json}"
-export FLY_BRAIN_CHECKPOINT_PATH="$CHECKPOINT_FILE"
+if [ -z "${FLY_BRAIN_CHECKPOINT_PATH:-}" ]; then
+    if [ -f "$REPO_ROOT/checkpoints/fly_brain_checkpoint.json" ]; then
+        CHECKPOINT_FILE="$REPO_ROOT/checkpoints/fly_brain_checkpoint.json"
+    elif [ -f "$PARENT_DIR/checkpoints/fly_brain_checkpoint.json" ]; then
+        CHECKPOINT_FILE="$PARENT_DIR/checkpoints/fly_brain_checkpoint.json"
+    else
+        CHECKPOINT_FILE="$REPO_ROOT/checkpoints/fly_brain_checkpoint.json"
+    fi
+    export FLY_BRAIN_CHECKPOINT_PATH="$CHECKPOINT_FILE"
+else
+    CHECKPOINT_FILE="$FLY_BRAIN_CHECKPOINT_PATH"
+fi
 LOCKFILE="/tmp/fly_brain_ros_run.pid"
 DASHBOARD_PORT=5000
 DASHBOARD_URL="http://127.0.0.1:${DASHBOARD_PORT}"
@@ -106,13 +116,34 @@ else
     exit 1
 fi
 
-ROS_WS_SETUP="$HOME/robo_fly_ros_ws/install/setup.bash"
-if [ -f "$ROS_WS_SETUP" ]; then
+ROS_WS_SETUP=""
+WS_CANDIDATES=(
+    "${ROS_WS:+${ROS_WS}/install/setup.bash}"
+    "${REPO_ROOT}/../../install/setup.bash"
+    "${REPO_ROOT}/../install/setup.bash"
+    "${REPO_ROOT}/install/setup.bash"
+    "$HOME/robo_fly_ros_ws/install/setup.bash"
+    "$HOME/ros2_ws/install/setup.bash"
+    "$HOME/colcon_ws/install/setup.bash"
+)
+
+for ws_cand in "${WS_CANDIDATES[@]}"; do
+    if [ -n "$ws_cand" ] && [ -f "$ws_cand" ]; then
+        ROS_WS_SETUP="$ws_cand"
+        break
+    fi
+done
+
+if [ -n "$ROS_WS_SETUP" ]; then
     # shellcheck source=/dev/null
     source "$ROS_WS_SETUP"
 else
-    echo "Error: ROS workspace setup not found at $ROS_WS_SETUP." >&2
-    echo "Please build the workspace using 'colcon build --symlink-install' in ~/robo_fly_ros_ws." >&2
+    echo "Error: ROS workspace setup not found." >&2
+    echo "Checked candidate locations:" >&2
+    for ws_cand in "${WS_CANDIDATES[@]}"; do
+        [ -n "$ws_cand" ] && echo "  - $ws_cand" >&2
+    done
+    echo "Please build the workspace using 'colcon build --symlink-install' and source install/setup.bash." >&2
     rm -f "$LOCKFILE"
     exit 1
 fi
@@ -121,9 +152,11 @@ export IGN_IP=127.0.0.1
 export QT_QPA_PLATFORM=xcb
 unset WAYLAND_DISPLAY
 
-if [ -d "$HOME/.local/lib/python3.10/site-packages" ]; then
-    export PYTHONPATH="$HOME/.local/lib/python3.10/site-packages${PYTHONPATH:+:$PYTHONPATH}"
+USER_SITE=$(python3 -m site --user-site 2>/dev/null || echo "$HOME/.local/lib/python3.10/site-packages")
+if [ -d "$USER_SITE" ]; then
+    export PYTHONPATH="$USER_SITE${PYTHONPATH:+:$PYTHONPATH}"
 fi
+export PYTHONPATH="$REPO_ROOT:$REPO_ROOT/virtual_world:$REPO_ROOT/live_lab${PYTHONPATH:+:$PYTHONPATH}"
 
 # ------------------------------------------------------------------------------
 # 3. Logging Setup
@@ -133,7 +166,7 @@ mkdir -p "$LOG_DIR"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="$LOG_DIR/run_${TIMESTAMP}.log"
 
-mkdir -p "$PARENT_DIR/checkpoints"
+mkdir -p "$(dirname "$CHECKPOINT_FILE")"
 
 # Global state trackers
 LAUNCH_PID=""

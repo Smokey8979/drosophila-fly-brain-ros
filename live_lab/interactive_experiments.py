@@ -20,6 +20,7 @@ import math
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 import numpy as np
 
@@ -29,11 +30,14 @@ from virtual_world.arena import FlyArena
 from virtual_world.closed_loop_agent import EmbodiedFlyAgent
 
 
+DEFAULT_EXPERIMENTS_DIR = str(Path(__file__).resolve().parents[1] / "experiments" / "results" / "interactive")
+
+
 class InteractiveExperimentRunner:
     """Automated and interactive runner for Drosophila brain learning experiments."""
 
-    def __init__(self, output_dir: str = "/home/om/Desktop/robo_fly/experiments/results/interactive", seed: int = 42):
-        self.output_dir = output_dir
+    def __init__(self, output_dir: Optional[str] = None, seed: int = 42):
+        self.output_dir = output_dir or os.environ.get("FLY_BRAIN_EXPERIMENTS_DIR", DEFAULT_EXPERIMENTS_DIR)
         self.seed = seed
         os.makedirs(self.output_dir, exist_ok=True)
 

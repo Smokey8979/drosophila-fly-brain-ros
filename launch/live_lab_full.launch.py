@@ -50,12 +50,20 @@ def generate_launch_description():
     config_file = os.path.join(pkg_dir, "config", "fly_brain_params.yaml")
 
     # Locate web dashboard server script
-    repo_root = Path(__file__).resolve().parents[2]
-    web_server_candidate = repo_root / "live_lab" / "web_server.py"
-    if web_server_candidate.exists():
-        web_server_path = str(web_server_candidate)
-    else:
-        web_server_path = "/home/om/Desktop/robo_fly/live_lab/web_server.py"
+    web_server_candidates = [
+        Path(__file__).resolve().parents[1] / "live_lab" / "web_server.py",
+        Path(__file__).resolve().parents[2] / "live_lab" / "web_server.py",
+        Path(pkg_dir) / "live_lab" / "web_server.py",
+        Path.cwd() / "live_lab" / "web_server.py",
+        Path("/home/om/Desktop/robo_fly/live_lab/web_server.py"),
+    ]
+    web_server_path = None
+    for cand in web_server_candidates:
+        if cand.exists():
+            web_server_path = str(cand.resolve())
+            break
+    if not web_server_path:
+        web_server_path = str(Path(__file__).resolve().parents[1] / "live_lab" / "web_server.py")
 
     # Launch configuration arguments
     use_sim_time = LaunchConfiguration("use_sim_time", default="false")

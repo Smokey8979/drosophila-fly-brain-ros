@@ -5,7 +5,7 @@ fly_brain_node:
     connectome_comp_path: ""
     connectome_conn_path: ""
     cache_dir: ""
-    checkpoint_file: "/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json"
+    checkpoint_file: ""          # Leave empty to automatically resolve canonical checkpoint path
     dt_ms: 0.1
     steps_per_cycle: 10          # 10 steps x 0.1ms = 1.0ms simulated brain time per control cycle
     device: "cpu"

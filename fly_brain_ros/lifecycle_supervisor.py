@@ -14,6 +14,7 @@ Guarantees:
 
 import os
 import signal
+import site
 import subprocess
 import sys
 import threading
@@ -96,9 +97,19 @@ class SimulationLifecycleSupervisor:
             cp_path = checkpoint_file or self.checkpoint_path
 
             # Locate sim_stack.launch.py
-            launch_file = Path(__file__).resolve().parents[1] / "launch" / "sim_stack.launch.py"
-            if not launch_file.exists():
-                launch_file = Path("/home/om/Desktop/robo_fly/fly_brain_ros/launch/sim_stack.launch.py")
+            launch_candidates = [
+                Path(__file__).resolve().parents[1] / "launch" / "sim_stack.launch.py",
+                Path(__file__).resolve().parents[0] / "launch" / "sim_stack.launch.py",
+                Path.cwd() / "launch" / "sim_stack.launch.py",
+                Path("/home/om/Desktop/robo_fly/fly_brain_ros/launch/sim_stack.launch.py"),
+            ]
+            launch_file = None
+            for cand in launch_candidates:
+                if cand.exists():
+                    launch_file = cand
+                    break
+            if not launch_file:
+                launch_file = Path(__file__).resolve().parents[1] / "launch" / "sim_stack.launch.py"
 
             cmd = [
                 "ros2", "launch", "fly_brain_ros", str(launch_file.name),
@@ -108,7 +119,11 @@ class SimulationLifecycleSupervisor:
             ]
 
             env = os.environ.copy()
-            env["PYTHONPATH"] = f"/home/om/.local/lib/python3.10/site-packages:{env.get('PYTHONPATH', '')}"
+            user_site = site.getusersitepackages() if hasattr(site, "getusersitepackages") else ""
+            if user_site and os.path.exists(user_site):
+                env["PYTHONPATH"] = f"{user_site}:{env.get('PYTHONPATH', '')}"
+            pkg_root = str(Path(__file__).resolve().parents[1])
+            env["PYTHONPATH"] = f"{pkg_root}:{pkg_root}/virtual_world:{pkg_root}/live_lab:{env.get('PYTHONPATH', '')}"
             env["IGN_IP"] = "127.0.0.1"
             env["QT_QPA_PLATFORM"] = "xcb"
             env.pop("WAYLAND_DISPLAY", None)

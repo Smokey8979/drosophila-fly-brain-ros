@@ -46,7 +46,17 @@ class TestROSNodeIntegration(unittest.TestCase):
         if HAVE_RCLPY and not rclpy.ok():
             rclpy.init()
         cls.workspace_root = pkg_root.parent
-        cls.data_dir = cls.workspace_root / 'fly-brain' / 'data'
+        candidates = [
+            pkg_root / 'data',
+            cls.workspace_root / 'fly-brain' / 'data',
+            cls.workspace_root / 'data',
+            Path('/home/om/Desktop/robo_fly/fly-brain/data'),
+        ]
+        cls.data_dir = pkg_root / 'data'
+        for cand in candidates:
+            if cand.exists():
+                cls.data_dir = cand
+                break
         cls.comp_path = str(cls.data_dir / '2025_Completeness_783.csv')
         cls.conn_path = str(cls.data_dir / '2025_Connectivity_783.parquet')
         cls.cache_dir = str(cls.data_dir)

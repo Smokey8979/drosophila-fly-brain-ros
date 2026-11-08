@@ -7,7 +7,7 @@ package_name = 'fly_brain_ros'
 setup(
     name=package_name,
     version='1.0.0',
-    packages=[package_name],
+    packages=[package_name, 'live_lab', 'virtual_world'],
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -16,6 +16,7 @@ setup(
         ('share/' + package_name + '/config', glob('config/*.yaml')),
         ('share/' + package_name + '/worlds', glob('worlds/*.world')),
         ('share/' + package_name + '/models/four_wheel_fly_robot', glob('models/four_wheel_fly_robot/*')),
+        ('share/' + package_name + '/live_lab/static', glob('live_lab/static/*')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

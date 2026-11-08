@@ -151,16 +151,20 @@ def resolve_connectome_path(configured_path: str, default_filename: str) -> str:
 
     # Search candidates
     search_dirs = [
-        Path(__file__).resolve().parents[2] / 'fly-brain' / 'data',
+        Path(os.environ.get("FLY_BRAIN_DATA_DIR", "")),
         Path(__file__).resolve().parents[1] / 'data',
+        Path(__file__).resolve().parents[2] / 'fly-brain' / 'data',
+        Path(__file__).resolve().parents[2] / 'data',
+        Path.cwd() / 'data',
         Path.cwd() / 'fly-brain' / 'data',
         Path('/home/om/Desktop/robo_fly/fly-brain/data'),
     ]
 
     for candidate_dir in search_dirs:
-        p = candidate_dir / default_filename
-        if p.exists():
-            return str(p)
+        if str(candidate_dir).strip():
+            p = candidate_dir / default_filename
+            if p.exists():
+                return str(p)
 
     return configured_path or default_filename
 

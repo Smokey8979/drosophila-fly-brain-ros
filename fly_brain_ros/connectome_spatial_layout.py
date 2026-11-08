@@ -91,11 +91,16 @@ def generate_spatial_atlas(
     """
     if comp_csv_path is None or not os.path.exists(comp_csv_path):
         candidates = [
-            "/home/om/Desktop/robo_fly/fly-brain/data/2025_Completeness_783.csv",
+            os.environ.get("FLY_BRAIN_COMPLETENESS_PATH", ""),
+            Path(__file__).resolve().parents[1] / "data" / "2025_Completeness_783.csv",
             Path(__file__).resolve().parents[2] / "fly-brain" / "data" / "2025_Completeness_783.csv",
+            Path(__file__).resolve().parents[2] / "data" / "2025_Completeness_783.csv",
+            Path.cwd() / "data" / "2025_Completeness_783.csv",
+            Path.cwd() / "fly-brain" / "data" / "2025_Completeness_783.csv",
+            "/home/om/Desktop/robo_fly/fly-brain/data/2025_Completeness_783.csv",
         ]
         for c in candidates:
-            if os.path.exists(str(c)):
+            if c and os.path.exists(str(c)):
                 comp_csv_path = str(c)
                 break
 
@@ -250,3 +255,20 @@ def generate_spatial_atlas(
         coords.tofile(output_cache_path)
 
     return coords, key_neurons
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate 3D spatial atlas for Drosophila 138k connectome")
+    parser.add_argument("--comp-csv", default=None, help="Path to 2025_Completeness_783.csv")
+    parser.add_argument("--output", default=None, help="Output path for connectome_spatial_coords.bin")
+    args = parser.parse_args()
+
+    repo_root = Path(__file__).resolve().parents[1]
+    out_path = args.output
+    if not out_path:
+        out_path = str(repo_root / "data" / "connectome_spatial_coords.bin")
+
+    coords, key_neurons = generate_spatial_atlas(comp_csv_path=args.comp_csv, output_cache_path=out_path)
+    print(f"Successfully generated spatial atlas with {len(coords)} neurons ({len(key_neurons)} key biological neurons placed).")
+    print(f"Saved binary atlas to: {out_path}")

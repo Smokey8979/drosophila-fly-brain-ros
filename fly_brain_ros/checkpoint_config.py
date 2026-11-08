@@ -12,10 +12,32 @@ import os
 import sys
 import json
 import hashlib
+from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
 
-# Canonical authoritative checkpoint path
-DEFAULT_CANONICAL_PATH = "/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json"
+
+def _resolve_default_canonical_path() -> str:
+    env_path = os.environ.get("FLY_BRAIN_CHECKPOINT_PATH", "").strip()
+    if env_path:
+        return os.path.abspath(env_path)
+
+    pkg_root = Path(__file__).resolve().parents[1]
+    candidates = [
+        pkg_root / "checkpoints" / "fly_brain_checkpoint.json",
+        pkg_root.parent / "checkpoints" / "fly_brain_checkpoint.json",
+        Path.cwd() / "checkpoints" / "fly_brain_checkpoint.json",
+        Path("/home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json"),
+    ]
+    for cand in candidates:
+        if cand.exists():
+            return str(cand.resolve())
+
+    # Default to repository checkpoints directory
+    return str((pkg_root / "checkpoints" / "fly_brain_checkpoint.json").resolve())
+
+
+# Canonical authoritative checkpoint path (dynamically evaluated)
+DEFAULT_CANONICAL_PATH = _resolve_default_canonical_path()
 
 REQUIRED_SECTIONS = [
     "manifest",
@@ -32,14 +54,14 @@ def get_canonical_checkpoint_path(custom_path: Optional[str] = None) -> str:
     Priority:
       1. Explicit custom_path argument (if provided and non-empty)
       2. Environment variable FLY_BRAIN_CHECKPOINT_PATH
-      3. Default canonical path: /home/om/Desktop/robo_fly/checkpoints/fly_brain_checkpoint.json
+      3. Candidate checkpoint locations (repo or workspace checkpoints/ directory)
     """
     if custom_path and str(custom_path).strip():
         return os.path.abspath(str(custom_path).strip())
     env_path = os.environ.get("FLY_BRAIN_CHECKPOINT_PATH", "").strip()
     if env_path:
         return os.path.abspath(env_path)
-    return os.path.abspath(DEFAULT_CANONICAL_PATH)
+    return _resolve_default_canonical_path()
 
 
 def compute_checkpoint_hash(data: Dict[str, Any]) -> str:
